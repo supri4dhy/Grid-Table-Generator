@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grid & Table Generator</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom CSS for resize handle */
+        .resize-handle {
+            width: 16px;
+            height: 16px;
+            background-color: rgba(0, 0, 0, 0.3);
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            cursor: se-resize;
+            border-bottom-right-radius: 8px;
+        }
+
+        /* Styling for draggable elements */
+        .grid-item {
+            background-color: #60a5fa; /* blue-400 */
+            border: 1px solid #3b82f6; /* blue-500 */
+            display: flex;
+            flex-direction: column; /* Allow content to stack */
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            position: relative;
+            user-select: none; /* Prevent text selection during drag */
+            min-width: 50px; /* Minimum size for visibility */
+            min-height: 50px; /* Minimum size for visibility */
+            border-radius: 0.5rem; /* rounded-lg */
+            cursor: grab; /* Default cursor for dragging */
+            overflow: hidden; /* Hide overflow for content */
+            padding: 0.5rem; /* Add some padding */
+            text-align: center; /* Center text */
+            transition: all 0.1s ease-out; /* Smooth transition for property changes */
+        }
+
+        .grid-item.dragging {
+            opacity: 0.7;
+            cursor: grabbing;
+        }
+
+        /* Added for resizing visual feedback */
+        .grid-item.resizing {
+            box-shadow: 0 0 0 3px #ef4444; /* red-500 outline-like shadow */
+            transition: none; /* Disable transition during active resize for smoother feedback */
+        }
+
+
+        .grid-container-wrapper {
+            border: 2px dashed #9ca3af; /* gray-400 */
+            min-height: 200px;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        /* Custom scrollbar for generated code */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        textarea::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        textarea::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .item-controls {
+            position: absolute; /* Position controls absolutely within the item */
+            top: 0.25rem;
+            right: 0.25rem;
+            display: flex;
+            gap: 0.25rem;
+            z-index: 10; /* Ensure controls are above other content */
+        }
+
+        .delete-item-btn {
+            background-color: rgba(239, 68, 68, 0.8); /* red-500 with transparency */
+            color: white;
+            font-weight: bold;
+            border-radius: 0.25rem; /* rounded-sm */
+            padding: 0.1rem 0.4rem;
+            font-size: 0.75rem; /* text-xs */
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+        }
+
+        .delete-item-btn:hover {
+            background-color: rgba(220, 38, 38, 0.9); /* red-600 with transparency */
+        }
+
+        /* Grid lines for visualization - these are for item borders */
+        .grid-container > .grid-item {
+            border-right: 1px solid #3b82f6; /* blue-500 */
+            border-bottom: 1px solid #3b82f6; /* blue-500 */
+            margin: -1px; /* Overlap borders to create single lines */
+        }
+
+        /* Background grid lines for the container */
+        .grid-container {
+            border-top: 1px solid #d1d5db; /* gray-300 */
+            border-left: 1px solid #d1d5db; /* gray-300 */
+            /* Background image for grid lines will be set by JS */
+        }
+
+        /* Tab styling */
+        .tab-button {
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            color: #4b5563; /* gray-600 */
+        }
+
+        .tab-button.active {
+            border-color: #3b82f6; /* blue-500 */
+            color: #1f2937; /* gray-900 */
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Table specific styles for preview */
+        .table-preview-container table {
+            width: 100%;
+            border-collapse: collapse; /* Ensure borders are collapsed */
+        }
+        .table-preview-container th,
+        .table-preview-container td {
+            padding: 0.75rem;
+            text-align: left;
+            border: 1px solid #e5e7eb; /* gray-200 */
+            cursor: pointer; /* Indicate cells are clickable for content editing */
+            position: relative; /* Needed for resize handle positioning */
+            transition: all 0.1s ease-out; /* Smooth transition for property changes */
+        }
+        .table-preview-container th {
+            font-weight: 600;
+        }
+
+        /* Table resize handle */
+        .resize-handle-table {
+            width: 12px; /* Reverted to smaller size */
+            height: 12px;
+            background-color: rgba(0, 0, 0, 0.4); /* Reverted opacity */
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            cursor: se-resize;
+            border-bottom-right-radius: 4px; /* Smaller radius */
+            z-index: 1; /* Ensure it's above cell content */
+        }
+
+        /* Highlight cell being resized */
+        .table-preview-container td.resizing,
+        .table-preview-container th.resizing {
+            outline: 2px solid #ef4444; /* red-500 */
+            outline-offset: -2px;
+        }
+
+        /* Custom styles for circular color inputs */
+        .color-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .color-circle {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid #ccc;
+            cursor: pointer;
+            flex-shrink: 0; /* Prevent shrinking */
+        }
+
+        /* Hide the default color input, but keep its functionality */
+        .color-input-hidden {
+            opacity: 0;
+            position: absolute;
+            pointer-events: none; /* Allow clicks to pass through to the circle */
+            width: 1px;
+            height: 1px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans p-4 sm:p-6 md:p-8">
+    <div class="max-w-7xl mx-auto bg-white shadow-lg rounded-lg p-6 sm:p-8">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-gray-800 mb-6 text-center">Grid & Table Generator</h1>
+
+        <!-- Tabs Navigation -->
+        <div class="flex border-b border-gray-200 mb-6">
+            <button id="gridTabBtn" class="tab-button active">Grid Generator</button>
+            <button id="tableTabBtn" class="tab-button">Table Generator</button>
+        </div>
+
+        <!-- Grid Generator Section -->
+        <div id="gridGeneratorSection" class="tab-content active">
+            <!-- Grid Controls -->
+            <div class="mb-8 p-4 bg-blue-50 rounded-lg shadow-inner">
+                <h2 class="text-xl font-semibold text-blue-800 mb-4">Pengaturan Grid</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label for="columns" class="block text-sm font-medium text-gray-700 mb-1">Kolom</label>
+                        <input type="number" id="columns" value="4" min="1" max="12"
+                               class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label for="rows" class="block text-sm font-medium text-gray-700 mb-1">Baris</label>
+                        <input type="number" id="rows" value="3" min="1" max="12"
+                               class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label for="gap" class="block text-sm font-medium text-gray-700 mb-1">Jarak (Ukuran Tailwind)</label>
+                        <input type="number" id="gap" value="4" min="0" max="16"
+                               class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+                <button id="applyGridSettings"
+                        class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out shadow-md">
+                    Terapkan Pengaturan Grid
+                </button>
+            </div>
+
+            <!-- Grid Area -->
+            <div class="mb-8">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Desain Grid Anda</h2>
+                <div id="gridContainerWrapper" class="grid-container-wrapper">
+                    <div id="gridContainer" class="grid w-full h-full">
+                        <!-- Elemen grid akan ditambahkan di sini oleh JS -->
+                    </div>
+                </div>
+                <div class="mt-4 flex justify-center">
+                    <button id="addGridItem"
+                            class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full text-2xl shadow-lg transition duration-300 ease-in-out flex items-center justify-center">
+                        <span class="mr-2">+</span> Tambah Elemen
+                    </button>
+                </div>
+            </div>
+
+            <!-- Generated Grid Code -->
+            <div class="mb-8 p-4 bg-gray-50 rounded-lg shadow-inner">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Kode HTML Grid yang Dihasilkan</h2>
+                <textarea id="generatedGridCode" rows="10" readonly
+                          class="w-full p-4 border border-gray-300 rounded-md bg-white font-mono text-sm resize-y overflow-auto"></textarea>
+                <button id="copyGridCode"
+                        class="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out shadow-md">
+                    Salin Kode Grid
+                </button>
+            </div>
+        </div>
+
+        <!-- Table Generator Section -->
+        <div id="tableGeneratorSection" class="tab-content">
+            <!-- Table Controls -->
+            <div class="mb-8 p-4 bg-blue-50 rounded-lg shadow-inner">
+                <h2 class="text-xl font-semibold text-blue-800 mb-4">Pengaturan Tabel</h2>
+
+                <!-- Header Group -->
+                <div class="border border-blue-200 rounded-lg p-4 mb-6 bg-white shadow-sm">
+                    <h3 class="text-lg font-semibold text-blue-700 mb-4">Header</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
+                        <div>
+                            <label for="numHeaderRows" class="block text-sm font-medium text-gray-700 mb-1">Jumlah Baris Header</label>
+                            <input type="number" id="numHeaderRows" value="1" min="0"
+                                   class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div class="col-span-1">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Latar</label>
+                            <div class="color-input-wrapper">
+                                <div id="headerBgColorCircle" class="color-circle" style="background-color: #f3f4f6;"></div>
+                                <input type="color" id="headerBgColor" value="#f3f4f6" class="color-input-hidden">
+                            </div>
+                        </div>
+                        <div class="col-span-1">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Teks</label>
+                            <div class="color-input-wrapper">
+                                <div id="headerTextColorCircle" class="color-circle" style="background-color: #4b5563;"></div>
+                                <input type="color" id="headerTextColor" value="#4b5563" class="color-input-hidden">
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-end h-full">
+                            <input type="checkbox" id="tableHeader" checked
+                                   class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <label for="tableHeader" class="ml-2 block text-sm font-medium text-gray-700">Aktif</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Body & General Table Group -->
+                <div class="border border-blue-200 rounded-lg p-4 mb-6 bg-white shadow-sm">
+                    <h3 class="text-lg font-semibold text-blue-700 mb-4">Body & Umum</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
+                        <div>
+                            <label for="tableRows" class="block text-sm font-medium text-gray-700 mb-1">Jumlah Baris Body</label>
+                            <input type="number" id="tableRows" value="5" min="1"
+                                   class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label for="tableCols" class="block text-sm font-medium text-gray-700 mb-1">Jumlah Kolom</label>
+                            <input type="number" id="tableCols" value="3" min="1"
+                                   class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div class="col-span-1">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Latar Body</label>
+                            <div class="color-input-wrapper">
+                                <div id="bodyBgColorCircle" class="color-circle" style="background-color: #ffffff;"></div>
+                                <input type="color" id="bodyBgColor" value="#ffffff" class="color-input-hidden">
+                            </div>
+                        </div>
+                        <div class="col-span-1">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Teks Body</label>
+                            <div class="color-input-wrapper">
+                                <div id="bodyTextColorCircle" class="color-circle" style="background-color: #4b5563;"></div>
+                                <input type="color" id="bodyTextColor" value="#4b5563" class="color-input-hidden">
+                            </div>
+                        </div>
+                        <div class="flex items-center col-span-full sm:col-span-1">
+                            <input type="checkbox" id="tableBorder" checked
+                                   class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <label for="tableBorder" class="ml-2 block text-sm font-medium text-gray-700">Border Tabel</label>
+                        </div>
+                        <div class="flex items-center col-span-full sm:col-span-1">
+                            <input type="checkbox" id="tableStriped"
+                                   class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <label for="tableStriped" class="ml-2 block text-sm font-medium text-gray-700">Baris Bergaris</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Buttons Group -->
+                <div class="mt-6 flex flex-col sm:flex-row justify-between gap-4">
+                    <button id="generateTable"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out shadow-md">
+                        Buat Tabel
+                    </button>
+                    <button id="resetTable"
+                            class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out shadow-md">
+                        Reset Tabel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Preview -->
+            <div class="mb-8 p-4 bg-white rounded-lg shadow-inner table-preview-container overflow-x-auto">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Pratinjau Tabel</h2>
+                <div id="tablePreview" class="w-full">
+                    <!-- Table preview will be generated here -->
+                </div>
+            </div>
+
+            <!-- Generated Table Code -->
+            <div class="mb-8 p-4 bg-gray-50 rounded-lg shadow-inner">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Kode HTML Tabel yang Dihasilkan</h2>
+                <textarea id="generatedTableCode" rows="10" readonly
+                          class="w-full p-4 border border-gray-300 rounded-md bg-white font-mono text-sm resize-y overflow-auto"></textarea>
+                <button id="copyTableCode"
+                        class="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 ease-in-out shadow-md">
+                    Salin Kode Tabel
+                </button>
+            </div>
+        </div>
+
+        <!-- Message Box for alerts -->
+        <div id="messageBox" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
+                <p id="messageText" class="text-lg font-semibold text-gray-800 mb-4"></p>
+                <button id="closeMessageBox" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md">OK</button>
+            </div>
+        </div>
+
+        <!-- Cell Editor Modal (now only for content) -->
+        <div id="cellEditorModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4">Edit Konten Sel</h3>
+                <div class="mb-4">
+                    <label for="cellContentInput" class="block text-sm font-medium text-gray-700 mb-1">Konten</label>
+                    <input type="text" id="cellContentInput" class="w-full p-2 border border-gray-300 rounded-md">
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button id="saveCellChangesBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md">Simpan</button>
+                    <button id="cancelCellChangesBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-md">Batal</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Common Elements and Functions ---
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const closeMessageBoxButton = document.getElementById('closeMessageBox');
+
+        function showMessageBox(message) {
+            messageText.textContent = message;
+            messageBox.classList.remove('hidden');
+        }
+
+        function closeMessageBox() {
+            messageBox.classList.add('hidden');
+        }
+
+        // --- Tab Navigation ---
+        const gridTabBtn = document.getElementById('gridTabBtn');
+        const tableTabBtn = document.getElementById('tableTabBtn');
+        const gridGeneratorSection = document.getElementById('gridGeneratorSection');
+        const tableGeneratorSection = document.getElementById('tableGeneratorSection');
+
+        function showTab(tabName) {
+            // Deactivate all tabs and hide all content sections
+            gridTabBtn.classList.remove('active');
+            tableTabBtn.classList.remove('active');
+            gridGeneratorSection.classList.remove('active');
+            tableGeneratorSection.classList.remove('active');
+
+            // Activate the selected tab and show its content
+            if (tabName === 'grid') {
+                gridTabBtn.classList.add('active');
+                gridGeneratorSection.classList.add('active');
+            } else if (tabName === 'table') {
+                tableTabBtn.classList.add('active');
+                tableGeneratorSection.classList.add('active');
+                generateTableCode(); // Generate table on tab switch
+            }
+        }
+
+        gridTabBtn.addEventListener('click', () => showTab('grid'));
+        tableTabBtn.addEventListener('click', () => showTab('table'));
+        closeMessageBoxButton.addEventListener('click', closeMessageBox);
+
+        // --- Grid Generator Logic ---
+        const columnsInput = document.getElementById('columns');
+        const rowsInput = document.getElementById('rows');
+        const gapInput = document.getElementById('gap');
+        const applyGridSettingsButton = document.getElementById('applyGridSettings');
+        const gridContainer = document.getElementById('gridContainer');
+        const addGridItemButton = document.getElementById('addGridItem');
+        const generatedGridCodeTextarea = document.getElementById('generatedGridCode');
+        const copyGridCodeButton = document.getElementById('copyGridCode');
+
+        let currentColumns = parseInt(columnsInput.value);
+        let currentRows = parseInt(rowsInput.value);
+        let currentGap = parseInt(gapInput.value);
+        let itemCounter = 0; // To give unique IDs to grid items
+
+        let activeItem = null; // Currently dragged/resized item
+        let isResizing = false;
+        let startX, startY; // Mouse coordinates when resize starts
+        let startCol, startRow; // Initial grid position (top-left cell) of the item when resize starts
+        let initialItemColSpan, initialItemRowSpan; // Initial span of the item when resize starts
+
+        // Global variable to store the callback for saving content (for both grid and table)
+        let saveContentCallback = null;
+
+        /**
+         * Applies the Tailwind CSS grid classes to the grid container based on input values.
+         */
+        function applyGridSettings() {
+            currentColumns = parseInt(columnsInput.value);
+            currentRows = parseInt(rowsInput.value);
+            currentGap = parseInt(gapInput.value);
+
+            // Validate inputs
+            if (isNaN(currentColumns) || currentColumns < 1 || currentColumns > 12) {
+                showMessageBox('Kolom harus berupa angka antara 1 dan 12.');
+                columnsInput.value = 4; // Reset to default
+                currentColumns = 4;
+                return;
+            }
+            if (isNaN(currentRows) || currentRows < 1 || currentRows > 12) {
+                showMessageBox('Baris harus berupa angka antara 1 dan 12.');
+                rowsInput.value = 3; // Reset to default
+                currentRows = 3;
+                return;
+            }
+            if (isNaN(currentGap) || currentGap < 0 || currentGap > 16) {
+                showMessageBox('Jarak harus berupa angka antara 0 dan 16 (skala spasi Tailwind).');
+                gapInput.value = 4; // Reset to default
+                currentGap = 4;
+                return;
+            }
+
+            // Clear existing grid classes
+            gridContainer.className = 'grid w-full h-full';
+
+            // Add new grid classes
+            gridContainer.classList.add(`grid-cols-${currentColumns}`);
+            gridContainer.classList.add(`grid-rows-${currentRows}`);
+            gridContainer.classList.add(`gap-${currentGap}`);
+
+            // Generate background grid lines dynamically
+            gridContainer.style.backgroundImage = `
+                linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+                linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
+            `;
+            gridContainer.style.backgroundSize = `
+                calc(100% / ${currentColumns}) 100%,
+                100% calc(100% / ${currentRows})
+            `;
+            gridContainer.style.backgroundPosition = `0 0`; // Start from top-left corner
+
+            // Adjust existing grid items to fit new grid if necessary
+            Array.from(gridContainer.children).forEach(item => {
+                const colStart = parseInt(item.dataset.colStart);
+                const colSpan = parseInt(item.dataset.colSpan);
+                const rowStart = parseInt(item.dataset.rowStart);
+                const rowSpan = parseInt(item.dataset.rowSpan);
+
+                // Ensure item doesn't go beyond new grid boundaries
+                let newColStart = Math.min(colStart, currentColumns);
+                let newColEnd = Math.min(newColStart + colSpan, currentColumns + 1);
+                let newColSpan = newColEnd - newColStart;
+
+                let newRowStart = Math.min(rowStart, currentRows);
+                let newRowEnd = Math.min(newRowStart + rowSpan, currentRows + 1);
+                let newRowSpan = newRowEnd - newRowStart;
+
+                // Update classes and dataset
+                item.classList.remove(`col-start-${colStart}`, `col-span-${colSpan}`, `row-start-${rowStart}`, `row-span-${rowSpan}`);
+                item.classList.add(`col-start-${newColStart}`, `col-span-${newColSpan}`, `row-start-${newRowStart}`, `row-span-${newRowSpan}`);
+                item.dataset.colStart = newColStart;
+                item.dataset.colSpan = newColSpan;
+                item.dataset.rowStart = newRowStart;
+                item.dataset.rowSpan = newRowSpan;
+            });
+
+            generateGridCode(); // Regenerate code after settings change
+        }
+
+        /**
+         * Creates a new draggable and resizable grid item.
+         */
+        function createGridItem() {
+            itemCounter++;
+            const item = document.createElement('div');
+            item.id = `grid-item-${itemCounter}`;
+            item.classList.add('grid-item', 'col-start-1', 'col-span-1', 'row-start-1', 'row-span-1', 'rounded-lg', 'shadow-md');
+            item.setAttribute('draggable', 'true');
+
+            // Store grid position and span in dataset for easier manipulation
+            item.dataset.colStart = 1;
+            item.dataset.colSpan = 1;
+            item.dataset.rowStart = 1;
+            item.dataset.rowSpan = 1;
+
+            // Item content and controls
+            item.innerHTML = `
+                <span class="item-text">Item ${itemCounter}</span>
+                <div class="item-controls">
+                    <button class="delete-item-btn">X</button>
+                </div>
+            `;
+
+            // Create resize handle
+            const resizeHandle = document.createElement('div');
+            resizeHandle.classList.add('resize-handle');
+            item.appendChild(resizeHandle);
+
+            // Add event listeners for drag and resize
+            item.addEventListener('dragstart', handleDragStart);
+            item.addEventListener('dragend', handleDragEnd);
+            item.addEventListener('mousedown', handleItemMouseDown); // For drag (sets activeItem)
+            item.addEventListener('dblclick', handleGridItemDblClick); // Double-click for editing
+
+            resizeHandle.addEventListener('mousedown', handleResizeMouseDown);
+
+            // Event listener for delete button
+            item.querySelector('.delete-item-btn').addEventListener('click', deleteGridItem);
+
+            return item;
+        }
+
+        /**
+         * Handles the double-click event on a grid item to open the editor modal.
+         * @param {MouseEvent} e - The mouse event.
+         */
+        function handleGridItemDblClick(e) {
+            const itemTextSpan = e.target.closest('.grid-item').querySelector('.item-text');
+            if (!itemTextSpan) return;
+
+            cellContentInput.value = itemTextSpan.textContent;
+            saveContentCallback = (newContent) => {
+                itemTextSpan.textContent = newContent;
+                generateGridCode(); // Update the generated code textarea
+            };
+            cellEditorModal.classList.remove('hidden');
+        }
+
+        /**
+         * Handles the mouse down event on a grid item (for dragging).
+         * This function determines if a drag operation should start.
+         * @param {MouseEvent} e - The mouse event.
+         */
+        function handleItemMouseDown(e) {
+            // If the click target is the resize handle or the delete button,
+            // prevent drag from starting on the item itself.
+            if (e.target.classList.contains('resize-handle') || e.target.tagName === 'BUTTON') {
+                return;
+            }
+            // Otherwise, set the current item as active for dragging.
+            // e.currentTarget refers to the .grid-item itself.
+            activeItem = e.currentTarget;
+        }
+
+        /**
+         * Handles the mouse down event on the resize handle.
+         * This function initiates a resize operation.
+         * @param {MouseEvent} e - The mouse event.
+         */
+        function handleResizeMouseDown(e) {
+            e.stopPropagation(); // Prevent the mousedown event from bubbling up to the item
+            isResizing = true;
+            activeItem = e.currentTarget.parentElement; // The grid item
+
+            // Temporarily disable draggable attribute on the item to prevent dragstart during resize
+            activeItem.setAttribute('draggable', 'false');
+
+            startX = e.clientX; // Initial mouse X position
+            startY = e.clientY; // Initial mouse Y position
+
+            // Get initial grid position (top-left cell) of the item when resize starts
+            startCol = parseInt(activeItem.dataset.colStart);
+            startRow = parseInt(activeItem.dataset.rowStart);
+
+            // Store initial span for calculation
+            initialItemColSpan = parseInt(activeItem.dataset.colSpan);
+            initialItemRowSpan = parseInt(activeItem.dataset.rowSpan);
+
+            // Add event listeners to document for resizing
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            activeItem.classList.add('resizing'); // Add resizing class for visual feedback
+            activeItem.style.cursor = 'se-resize'; // Change cursor during resize
+        }
+
+        /**
+         * Handles the mouse move event during resizing.
+         * @param {MouseEvent} e - The mouse event.
+         */
+        function handleMouseMove(e) {
+            if (!isResizing || !activeItem) {
+                return;
+            }
+
+            const gridRect = gridContainer.getBoundingClientRect();
+            const cellWidth = gridRect.width / currentColumns;
+            const cellHeight = gridRect.height / currentRows;
+
+            // Calculate the current mouse position relative to the grid container
+            const currentMouseX = e.clientX - gridRect.left;
+            const currentMouseY = e.clientY - gridRect.top;
+
+            // Determine the target grid cell based on mouse position
+            let targetCol = Math.floor(currentMouseX / cellWidth) + 1;
+            let targetRow = Math.floor(currentMouseY / cellHeight) + 1;
+
+            // Clamp targetCol and targetRow to be within grid boundaries
+            targetCol = Math.min(Math.max(1, targetCol), currentColumns);
+            targetRow = Math.min(Math.max(1, targetRow), currentRows);
+
+            // Calculate new span based on the target cell and the item's starting cell
+            let newColSpan = targetCol - startCol + 1;
+            let newRowSpan = targetRow - startRow + 1;
+
+            // Ensure minimum span of 1
+            newColSpan = Math.max(1, newColSpan);
+            newRowSpan = Math.max(1, newRowSpan);
+
+            // Ensure new span does not go beyond the grid's total columns/rows from its start position
+            newColSpan = Math.min(newColSpan, currentColumns - startCol + 1);
+            newRowSpan = Math.min(newRowSpan, currentRows - startRow + 1);
+
+            // Only update if there's an actual change to avoid excessive DOM updates
+            const currentItemColSpan = parseInt(activeItem.dataset.colSpan);
+            const currentItemRowSpan = parseInt(activeItem.dataset.rowSpan);
+
+            if (currentItemColSpan !== newColSpan || currentItemRowSpan !== newRowSpan) {
+                // Update dataset immediately for accurate calculation in next move
+                activeItem.dataset.colSpan = newColSpan;
+                activeItem.dataset.rowSpan = newRowSpan;
+
+                // Visually update the item's size using grid-column/row properties
+                // This provides smooth visual feedback without re-rendering the whole grid
+                activeItem.style.gridColumn = `${startCol} / span ${newColSpan}`;
+                activeItem.style.gridRow = `${startRow} / span ${newRowSpan}`;
+            }
+        }
+
+        /**
+         * Handles the mouse up event, ending resizing.
+         */
+        function handleMouseUp() {
+            isResizing = false;
+            if (activeItem) {
+                activeItem.classList.remove('resizing'); // Remove resizing class
+                activeItem.style.cursor = 'grab'; // Restore default cursor
+                activeItem.setAttribute('draggable', 'true'); // Re-enable draggable
+
+                // Remove inline grid-column/row styles
+                activeItem.style.gridColumn = '';
+                activeItem.style.gridRow = '';
+
+                // Remove old Tailwind classes and add new ones based on final dataset values
+                // This ensures the actual Tailwind classes are updated in the DOM
+                activeItem.classList.forEach(cls => {
+                    if (cls.startsWith('col-span-') || cls.startsWith('row-span-')) {
+                        activeItem.classList.remove(cls);
+                    }
+                });
+                activeItem.classList.add(`col-span-${activeItem.dataset.colSpan}`, `row-span-${activeItem.dataset.rowSpan}`);
+
+                generateGridCode(); // Regenerate code only once at the end of resize
+            }
+            activeItem = null;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        }
+
+        /**
+         * Handles the drag start event for a grid item.
+         * @param {DragEvent} e - The drag event.
+         */
+        function handleDragStart(e) {
+            activeItem = e.target;
+            e.dataTransfer.setData('text/plain', activeItem.id);
+            e.dataTransfer.effectAllowed = 'move';
+            activeItem.classList.add('dragging');
+        }
+
+        /**
+         * Handles the drag end event for a grid item.
+         * @param {DragEvent} e - The drag event.
+         */
+        function handleDragEnd(e) {
+            activeItem.classList.remove('dragging');
+            activeItem = null;
+        }
+
+        /**
+         * Prevents default behavior for drag over, allowing drop.
+         * @param {DragEvent} e - The drag event.
+         */
+        function handleDragOver(e) {
+            e.preventDefault(); // Necessary to allow drop
+            e.dataTransfer.dropEffect = 'move';
+        }
+
+        /**
+         * Handles the drop event on the grid container.
+         * Calculates new grid position for the dropped item.
+         * @param {DragEvent} e - The drag event.
+         */
+        function handleDrop(e) {
+            e.preventDefault();
+            const id = e.dataTransfer.getData('text/plain');
+            const draggedElement = document.getElementById(id);
+
+            if (!draggedElement || !gridContainer.contains(draggedElement)) {
+                return; // Item not found or not from this grid
+            }
+
+            // Calculate the drop position relative to the grid container
+            const gridRect = gridContainer.getBoundingClientRect();
+            const dropX = e.clientX - gridRect.left;
+            const dropY = e.clientY - gridRect.top;
+
+            // Calculate which grid cell the drop occurred in
+            const cellWidth = gridRect.width / currentColumns;
+            const cellHeight = gridRect.height / currentRows;
+
+            let newColStart = Math.floor(dropX / cellWidth) + 1;
+            let newRowStart = Math.floor(dropY / cellHeight) + 1;
+
+            // Get current span of the dragged item
+            const colSpan = parseInt(draggedElement.dataset.colSpan);
+            const rowSpan = parseInt(draggedElement.dataset.rowSpan);
+
+            // Adjust newColStart/newRowStart to ensure the entire item fits within the grid
+            newColStart = Math.min(newColStart, currentColumns - colSpan + 1);
+            newRowStart = Math.min(newRowStart, currentRows - rowSpan + 1);
+
+            // Ensure minimum 1 for start positions
+            newColStart = Math.max(1, newColStart);
+            newRowStart = Math.max(1, newRowStart);
+
+            // Remove old grid position classes
+            draggedElement.classList.remove(`col-start-${draggedElement.dataset.colStart}`, `row-start-${draggedElement.dataset.rowStart}`);
+
+            // Add new grid position classes
+            draggedElement.classList.add(`col-start-${newColStart}`, `row-start-${newRowStart}`);
+
+            // Update dataset
+            draggedElement.dataset.colStart = newColStart;
+            draggedElement.dataset.colSpan = colSpan; // Ensure colSpan is preserved
+            draggedElement.dataset.rowStart = newRowStart;
+            draggedElement.dataset.rowSpan = rowSpan; // Ensure rowSpan is preserved
+
+
+            generateGridCode(); // Regenerate code after item position change
+        }
+
+        /**
+         * Deletes a grid item from the container.
+         * @param {Event} e - The click event from the delete button.
+         */
+        function deleteGridItem(e) {
+            const item = e.target.closest('.grid-item');
+            if (item && gridContainer.contains(item)) {
+                gridContainer.removeChild(item);
+                generateGridCode(); // Regenerate code after deletion
+            }
+        }
+
+        /**
+         * Generates the HTML code for the current grid layout.
+         */
+        function generateGridCode() {
+            let code = `<div class="grid grid-cols-${currentColumns} grid-rows-${currentRows} gap-${currentGap}">\n`;
+
+            Array.from(gridContainer.children).forEach(item => {
+                const colStart = item.dataset.colStart;
+                const colSpan = item.dataset.colSpan;
+                const rowStart = item.dataset.rowStart;
+                const rowSpan = item.dataset.rowSpan;
+                const content = item.querySelector('.item-text').textContent; // Get content from the span
+
+                code += `    <div class="col-start-${colStart} col-span-${colSpan} row-start-${rowStart} row-span-${rowSpan} bg-blue-400 border border-blue-500 flex items-center justify-center text-white font-bold rounded-lg shadow-md">\n`;
+                code += `        ${content}\n`;
+                code += `    </div>\n`;
+            });
+
+            code += `</div>`;
+            generatedGridCodeTextarea.value = code;
+        }
+
+        /**
+         * Copies the generated HTML code to the clipboard.
+         */
+        function copyGridCodeToClipboard() {
+            generatedGridCodeTextarea.select();
+            try {
+                document.execCommand('copy');
+                showMessageBox('Kode Grid disalin ke clipboard!');
+            } catch (err) {
+                showMessageBox('Gagal menyalin kode Grid. Harap salin secara manual.');
+                console.error('Failed to copy grid code: ', err);
+            }
+        }
+
+        // Event Listeners for Grid Generator
+        applyGridSettingsButton.addEventListener('click', applyGridSettings);
+        addGridItemButton.addEventListener('click', () => {
+            const newItem = createGridItem();
+            gridContainer.appendChild(newItem);
+            generateGridCode(); // Regenerate code after adding new item
+        });
+        copyGridCodeButton.addEventListener('click', copyGridCodeToClipboard);
+        gridContainer.addEventListener('dragover', handleDragOver); // Add dragover to container
+        gridContainer.addEventListener('drop', handleDrop); // Add drop to container
+
+        // --- Table Generator Logic ---
+        const numHeaderRowsInput = document.getElementById('numHeaderRows'); // New input for header rows
+        const tableRowsInput = document.getElementById('tableRows');
+        const tableColsInput = document.getElementById('tableCols');
+        const tableHeaderCheckbox = document.getElementById('tableHeader');
+        const tableBorderCheckbox = document.getElementById('tableBorder');
+        const tableStripedCheckbox = document.getElementById('tableStriped');
+        const generateTableButton = document.getElementById('generateTable');
+        const resetTableButton = document.getElementById('resetTable'); // New Reset button
+        const tablePreviewDiv = document.getElementById('tablePreview');
+        const generatedTableCodeTextarea = document.getElementById('generatedTableCode');
+        const copyTableCodeButton = document.getElementById('copyTableCode');
+
+        // New color inputs and circles
+        const headerBgColorInput = document.getElementById('headerBgColor');
+        const headerTextColorInput = document.getElementById('headerTextColor');
+        const bodyBgColorInput = document.getElementById('bodyBgColor');
+        const bodyTextColorInput = document.getElementById('bodyTextColor');
+
+        const headerBgColorCircle = document.getElementById('headerBgColorCircle');
+        const headerTextColorCircle = document.getElementById('headerTextColorCircle');
+        const bodyBgColorCircle = document.getElementById('bodyBgColorCircle');
+        const bodyTextColorCircle = document.getElementById('bodyTextColorCircle');
+
+        // Cell Editor Elements
+        const cellEditorModal = document.getElementById('cellEditorModal');
+        const cellContentInput = document.getElementById('cellContentInput');
+        const saveCellChangesBtn = document.getElementById('saveCellChangesBtn');
+        const cancelCellChangesBtn = document.getElementById('cancelCellChangesBtn');
+
+        let tableHeaderData = []; // 2D array for header cells
+        let tableBodyData = [];   // 2D array for body cells
+
+        let editingCellRow = -1;
+        let editingCellCol = -1;
+        let isHeaderCellBeingEdited = false; // To track if current cell is header or body
+
+        let activeTableCell = null; // Currently resized table cell
+        let isResizingTable = false;
+        let startCellX, startCellY; // Mouse coordinates when resize starts
+        let originalStartCellColspan, originalStartCellRowspan; // Original colspan/rowspan when resize starts
+
+        /**
+         * Initializes the tableHeaderData and tableBodyData with default cell objects.
+         * @param {number} numHeaderRows - Number of header rows.
+         * @param {number} numBodyRows - Number of body rows.
+         * @param {number} numCols - Number of columns.
+         */
+        function initializeTableData(numHeaderRows, numBodyRows, numCols) {
+            tableHeaderData = [];
+            tableBodyData = [];
+
+            // Initialize Header Data
+            for (let r = 0; r < numHeaderRows; r++) {
+                tableHeaderData[r] = [];
+                for (let c = 0; c < numCols; c++) {
+                    tableHeaderData[r][c] = {
+                        content: `H-${r + 1}-${c + 1}`, // Header content
+                        colspan: 1,
+                        rowspan: 1,
+                    };
+                }
+            }
+
+            // Initialize Body Data
+            for (let r = 0; r < numBodyRows; r++) {
+                tableBodyData[r] = [];
+                for (let c = 0; c < numCols; c++) {
+                    tableBodyData[r][c] = {
+                        content: `D-${r + 1}-${c + 1}`, // Data content
+                        colspan: 1,
+                        rowspan: 1,
+                    };
+                }
+            }
+        }
+
+        /**
+         * Adds click listeners to all cells in the table preview to enable content editing.
+         * Adds mousedown listeners to resize handles for colspan/rowspan editing.
+         */
+        function addTableCellInteractionListeners() {
+            // Remove existing listeners to prevent duplicates
+            const oldCells = tablePreviewDiv.querySelectorAll('th, td');
+            oldCells.forEach(cell => {
+                cell.removeEventListener('dblclick', handleTableCellClick);
+                const resizeHandle = cell.querySelector('.resize-handle-table');
+                if (resizeHandle) {
+                    resizeHandle.removeEventListener('mousedown', handleTableCellResizeMouseDown);
+                }
+            });
+
+            // Add listeners to new cells
+            const cells = tablePreviewDiv.querySelectorAll('th, td');
+            cells.forEach(cell => {
+                // Only add dblclick listener for content editing to the "master" cell (the one with data-row/col)
+                if (cell.dataset.row && cell.dataset.col) {
+                    cell.addEventListener('dblclick', handleTableCellClick);
+                }
+
+                // Add resize handle and listener
+                const resizeHandle = document.createElement('div');
+                resizeHandle.classList.add('resize-handle-table');
+                cell.appendChild(resizeHandle);
+                resizeHandle.addEventListener('mousedown', handleTableCellResizeMouseDown);
+            });
+        }
+
+        /**
+         * Handles the dblclick event on a table cell to open the editor modal (for content only).
+         * @param {MouseEvent} e - The mouse event.
+         */
+        function handleTableCellClick(e) {
+            const targetCell = e.target.closest('th, td');
+            if (!targetCell) return;
+
+            const row = parseInt(targetCell.dataset.row);
+            const col = parseInt(targetCell.dataset.col);
+
+            // Ensure it's a renderable cell and not a merged-over cell
+            if (isNaN(row) || isNaN(col)) {
+                showMessageBox('Sel ini adalah bagian dari sel yang digabungkan dan tidak dapat diedit secara langsung. Edit sel kiri atas dari blok yang digabungkan.');
+                return;
+            }
+
+            const isHeader = targetCell.tagName === 'TH';
+            const cellData = isHeader ? tableHeaderData[row][col] : tableBodyData[row][col];
+            cellContentInput.value = cellData.content;
+            saveContentCallback = (newContent) => {
+                cellData.content = newContent; // Update data model
+                generateTableCode(); // Re-render table
+            };
+            cellEditorModal.classList.remove('hidden');
+        }
+
+        /**
+         * Handles mouse down on a table cell's resize handle to initiate resizing.
+         * @param {MouseEvent} e - The mouse event.
+         */
+        function handleTableCellResizeMouseDown(e) {
+            e.stopPropagation(); // Prevent dblclick event on cell
+            isResizingTable = true;
+            activeTableCell = e.currentTarget.parentElement; // The th or td element
+
+            // Get the logical row and column from dataset
+            const row = parseInt(activeTableCell.dataset.row);
+            const col = parseInt(activeTableCell.dataset.col);
+            const isHeader = activeTableCell.tagName === 'TH';
+
+            if (isNaN(row) || isNaN(col)) {
+                showMessageBox('Tidak dapat mengubah ukuran sel yang digabungkan. Harap ubah ukuran dari sel awal (kiri atas) blok yang digabungkan.');
+                isResizingTable = false; // Reset flag
+                return;
+            }
+
+            editingCellRow = row;
+            editingCellCol = col;
+            isHeaderCellBeingEdited = isHeader;
+
+            startCellX = e.clientX;
+            startCellY = e.clientY;
+
+            const cellData = isHeader ? tableHeaderData[row][col] : tableBodyData[row][col];
+            originalStartCellColspan = cellData.colspan;
+            originalStartCellRowspan = cellData.rowspan;
+
+            document.addEventListener('mousemove', handleTableCellMouseMove);
+            document.addEventListener('mouseup', handleTableCellMouseUp);
+            activeTableCell.classList.add('resizing'); // Add class to highlight
+            activeTableCell.style.cursor = 'se-resize';
+        }
+
+        /**
+         * Handles mouse move during table cell resizing.
+         * @param {MouseEvent} e - The mouse event.
+         */
+        function handleTableCellMouseMove(e) {
+            if (!isResizingTable || !activeTableCell) return;
+
+            const currentDeltaX = e.clientX - startCellX;
+            const currentDeltaY = e.clientY - startCellY;
+
+            const tableElement = tablePreviewDiv.querySelector('table');
+            if (!tableElement) return;
+
+            const tableRect = tableElement.getBoundingClientRect();
+            const numTableCols = parseInt(tableColsInput.value);
+            const numHeaderRows = parseInt(numHeaderRowsInput.value);
+            const numBodyRows = parseInt(tableRowsInput.value);
+
+            // Total conceptual rows for height calculation
+            const totalConceptualRows = numHeaderRows + numBodyRows;
+
+            const avgCellWidth = tableRect.width / numTableCols;
+            const avgCellHeight = tableRect.height / totalConceptualRows; // Use total conceptual rows for consistent height calc
+
+            let newColspan = Math.max(1, originalStartCellColspan + Math.round(currentDeltaX / avgCellWidth));
+            let newRowspan = Math.max(1, originalStartCellRowspan + Math.round(currentDeltaY / avgCellHeight));
+
+            // Determine max limits based on whether it's a header or body cell
+            let maxColLimit = numTableCols - editingCellCol;
+            let maxRowLimit;
+
+            if (isHeaderCellBeingEdited) {
+                // Header cell: max rowspan is remaining header rows + all body rows
+                maxRowLimit = (numHeaderRows - editingCellRow) + numBodyRows;
+            } else {
+                // Body cell: max rowspan is remaining body rows
+                maxRowLimit = numBodyRows - editingCellRow;
+            }
+
+            newColspan = Math.min(newColspan, maxColLimit);
+            newRowspan = Math.min(newRowspan, maxRowLimit);
+
+            // Update the data model
+            let currentCellData;
+            if (isHeaderCellBeingEdited) {
+                currentCellData = tableHeaderData[editingCellRow][editingCellCol];
+            } else {
+                currentCellData = tableBodyData[editingCellRow][editingCellCol];
+            }
+
+            if (currentCellData.colspan !== newColspan || currentCellData.rowspan !== newRowspan) {
+                currentCellData.colspan = newColspan;
+                currentCellData.rowspan = newRowspan;
+                generateTableCode(); // Re-render the table with updated data
+
+                // *** IMPORTANT: Re-acquire the activeTableCell reference after re-render ***
+                // The DOM elements are recreated, so the old activeTableCell is detached.
+                // Find the cell that corresponds to the editingCellRow and editingCellCol in the new DOM.
+                let selector = `[data-row="${editingCellRow}"][data-col="${editingCellCol}"]`;
+                if (isHeaderCellBeingEdited) {
+                    selector = `thead ` + selector;
+                } else {
+                    selector = `tbody ` + selector;
+                }
+
+                const newActiveTableCell = tablePreviewDiv.querySelector(selector);
+                if (newActiveTableCell) {
+                    activeTableCell = newActiveTableCell;
+                    activeTableCell.classList.add('resizing');
+                    activeTableCell.style.cursor = 'se-resize';
+                } else {
+                    handleTableCellMouseUp();
+                    showMessageBox('Sel yang diubah ukurannya tidak lagi dapat diakses. Pengubahan ukuran dihentikan.');
+                    return;
+                }
+            }
+        }
+
+        /**
+         * Handles mouse up, ending table cell resizing.
+         */
+        function handleTableCellMouseUp() {
+            isResizingTable = false;
+            if (activeTableCell) {
+                activeTableCell.classList.remove('resizing');
+                activeTableCell.style.cursor = 'pointer';
+            }
+            activeTableCell = null;
+            document.removeEventListener('mousemove', handleTableCellMouseMove);
+            document.removeEventListener('mouseup', handleTableCellMouseUp);
+        }
+
+        // Save cell changes (only content now)
+        saveCellChangesBtn.addEventListener('click', () => {
+            const newContent = cellContentInput.value;
+            if (saveContentCallback) {
+                saveContentCallback(newContent);
+            }
+            cellEditorModal.classList.add('hidden');
+            saveContentCallback = null; // Clear callback
+        });
+
+        // Cancel cell changes
+        cancelCellChangesBtn.addEventListener('click', () => {
+            cellEditorModal.classList.add('hidden');
+            saveContentCallback = null; // Clear callback
+        });
+
+
+        /**
+         * Generates the HTML code for the table based on current settings.
+         */
+        function generateTableCode() {
+            const numHeaderRows = parseInt(numHeaderRowsInput.value);
+            const numBodyRows = parseInt(tableRowsInput.value);
+            const numCols = parseInt(tableColsInput.value);
+            const showHeader = tableHeaderCheckbox.checked;
+            const isStriped = tableStripedCheckbox.checked;
+            const hasBorder = tableBorderCheckbox.checked;
+
+            const headerBgColor = headerBgColorInput.value;
+            const headerTextColor = headerTextColorInput.value;
+            const bodyBgColor = bodyBgColorInput.value;
+            const bodyTextColor = bodyTextColorInput.value;
+
+            // Validate inputs
+            if (isNaN(numHeaderRows) || numHeaderRows < 0) {
+                showMessageBox('Jumlah Baris Header harus berupa angka positif atau nol.');
+                numHeaderRowsInput.value = 1;
+                return;
+            }
+            if (isNaN(numBodyRows) || numBodyRows < 1) {
+                showMessageBox('Jumlah Baris Body harus berupa angka positif.');
+                tableRowsInput.value = 5;
+                return;
+            }
+            if (isNaN(numCols) || numCols < 1) {
+                showMessageBox('Jumlah Kolom harus berupa angka positif.');
+                tableColsInput.value = 3;
+                return;
+            }
+
+            // Re-initialize data if dimensions changed
+            // Check if dimensions or header row count has changed, or if data is empty
+            const headerDimensionsChanged = tableHeaderData.length !== numHeaderRows || (numHeaderRows > 0 && tableHeaderData[0] && tableHeaderData[0].length !== numCols);
+            const bodyDimensionsChanged = tableBodyData.length !== numBodyRows || (numBodyRows > 0 && tableBodyData[0] && tableBodyData[0].length !== numCols);
+
+            if (headerDimensionsChanged || bodyDimensionsChanged || (tableHeaderData.length === 0 && numHeaderRows > 0) || (tableBodyData.length === 0 && numBodyRows > 0)) {
+                const oldHeaderData = JSON.parse(JSON.stringify(tableHeaderData));
+                const oldBodyData = JSON.parse(JSON.stringify(tableBodyData));
+
+                initializeTableData(numHeaderRows, numBodyRows, numCols);
+
+                // Copy over old header content if dimensions allow
+                for (let r = 0; r < Math.min(oldHeaderData.length, numHeaderRows); r++) {
+                    for (let c = 0; c < Math.min(oldHeaderData[0].length, numCols); c++) {
+                        if (oldHeaderData[r] && oldHeaderData[r][c]) {
+                            tableHeaderData[r][c].content = oldHeaderData[r][c].content;
+                            tableHeaderData[r][c].colspan = Math.min(oldHeaderData[r][c].colspan, numCols - c);
+                            tableHeaderData[r][c].rowspan = Math.min(oldHeaderData[r][c].rowspan, (numHeaderRows - r) + numBodyRows); // Clamp to total remaining rows
+                        }
+                    }
+                }
+
+                // Copy over old body content if dimensions allow
+                for (let r = 0; r < Math.min(oldBodyData.length, numBodyRows); r++) {
+                    for (let c = 0; c < Math.min(oldBodyData[0].length, numCols); c++) {
+                        if (oldBodyData[r] && oldBodyData[r][c]) {
+                            tableBodyData[r][c].content = oldBodyData[r][c].content;
+                            tableBodyData[r][c].colspan = Math.min(oldBodyData[r][c].colspan, numCols - c);
+                            tableBodyData[r][c].rowspan = Math.min(oldBodyData[r][c].rowspan, numBodyRows - r);
+                        }
+                    }
+                }
+            }
+
+
+            let tableClasses = ['w-full', 'text-sm', 'text-left', 'text-gray-500', 'dark:text-gray-400'];
+            if (hasBorder) {
+                tableClasses.push('border-collapse');
+            }
+
+            let code = `<table class="${tableClasses.join(' ')}">\n`;
+
+            // Create a temporary grid to track merged cells for rendering (considering both header and body spans)
+            // This grid represents the *entire* conceptual table layout.
+            let conceptualGrid = Array(numHeaderRows + numBodyRows).fill(null).map(() => Array(numCols).fill(true));
+
+            // Populate conceptualGrid based on header data
+            if (showHeader && numHeaderRows > 0) {
+                for (let r = 0; r < numHeaderRows; r++) {
+                    for (let c = 0; c < numCols; c++) {
+                        if (!conceptualGrid[r][c]) {
+                            continue; // This cell is already covered by a previous header colspan/rowspan
+                        }
+                        const cell = tableHeaderData[r][c];
+                        if (cell) { // Ensure cell data exists
+                            // Mark cells covered by colspan
+                            for (let l = 1; l < cell.colspan; l++) {
+                                if (c + l < numCols) conceptualGrid[r][c + l] = false;
+                            }
+                            // Mark cells covered by rowspan (including into body rows)
+                            for (let k = 1; k < cell.rowspan; k++) {
+                                if (r + k < numHeaderRows + numBodyRows) {
+                                    for (let l = 0; l < cell.colspan; l++) {
+                                        if (c + l < numCols) conceptualGrid[r + k][c + l] = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Populate conceptualGrid based on body data (only for cells not covered by headers)
+            for (let r = 0; r < numBodyRows; r++) {
+                for (let c = 0; c < numCols; c++) {
+                    const actualRowInFullGrid = numHeaderRows + r;
+                    if (!conceptualGrid[actualRowInFullGrid][c]) {
+                        continue; // This cell is already covered by a header rowspan or previous body cell
+                    }
+                    const cell = tableBodyData[r][c];
+                    if (cell) { // Ensure cell data exists
+                        // Mark cells covered by colspan
+                        for (let l = 1; l < cell.colspan; l++) {
+                            if (c + l < numCols) conceptualGrid[actualRowInFullGrid][c + l] = false;
+                        }
+                        // Mark cells covered by rowspan
+                        for (let k = 1; k < cell.rowspan; k++) {
+                            if (actualRowInFullGrid + k < numHeaderRows + numBodyRows) {
+                                for (let l = 0; l < cell.colspan; l++) {
+                                    if (c + l < numCols) conceptualGrid[actualRowInFullGrid + k][c + l] = false;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            // Render Table Header
+            if (showHeader && numHeaderRows > 0) {
+                code += `    <thead class="text-xs uppercase" style="background-color: ${headerBgColor}; color: ${headerTextColor};">\n`;
+                for (let r = 0; r < numHeaderRows; r++) {
+                    code += `        <tr>\n`;
+                    for (let c = 0; c < numCols; c++) {
+                        if (!conceptualGrid[r][c]) {
+                            continue; // This cell is covered by a colspan/rowspan, skip rendering
+                        }
+
+                        const cell = tableHeaderData[r][c];
+                        let thAttributes = `scope="col" class="px-6 py-3${hasBorder ? ' border border-gray-300' : ''}" data-row="${r}" data-col="${c}"`;
+
+                        if (cell.colspan > 1) {
+                            thAttributes += ` colspan="${cell.colspan}"`;
+                        }
+                        if (cell.rowspan > 1) {
+                            thAttributes += ` rowspan="${cell.rowspan}"`;
+                        }
+                        code += `            <th ${thAttributes}>${cell.content}</th>\n`;
+                    }
+                    code += `        </tr>\n`;
+                }
+                code += `    </thead>\n`;
+            }
+
+            // Render Table Body
+            code += `    <tbody style="background-color: ${bodyBgColor}; color: ${bodyTextColor};">\n`;
+            for (let r = 0; r < numBodyRows; r++) {
+                let rowClasses = [];
+                if (isStriped) {
+                    rowClasses.push('odd:bg-white', 'even:bg-gray-50', 'odd:dark:bg-gray-900', 'even:dark:bg-gray-800');
+                }
+                rowClasses.push('border-b', 'dark:border-gray-700'); // Always add border-b for rows
+
+                code += `        <tr class="${rowClasses.join(' ')}">\n`;
+                for (let c = 0; c < numCols; c++) {
+                    const actualRowInFullGrid = numHeaderRows + r;
+                    if (!conceptualGrid[actualRowInFullGrid][c]) {
+                        continue; // This cell is covered by a header rowspan or previous body cell's span
+                    }
+
+                    const cell = tableBodyData[r][c];
+                    let tdClasses = `px-6 py-4${hasBorder ? ' border border-gray-300' : ''}`;
+                    let tdAttributes = `data-row="${r}" data-col="${c}"`; // data-row/col here are relative to bodyData
+
+                    if (cell.colspan > 1) {
+                        tdAttributes += ` colspan="${cell.colspan}"`;
+                    }
+                    if (cell.rowspan > 1) {
+                        tdAttributes += ` rowspan="${cell.rowspan}"`;
+                    }
+
+                    code += `            <td class="${tdClasses}" ${tdAttributes}>${cell.content}</td>\n`;
+                }
+                code += `        </tr>\n`;
+            }
+            code += `    </tbody>\n`;
+            code += `</table>`;
+
+            generatedTableCodeTextarea.value = code;
+            tablePreviewDiv.innerHTML = code; // Update preview
+
+            // Add click and resize listeners to newly generated cells for interaction
+            addTableCellInteractionListeners();
+        }
+
+        /**
+         * Copies the generated HTML table code to the clipboard.
+         */
+        function copyTableCodeToClipboard() {
+            generatedTableCodeTextarea.select();
+            try {
+                document.execCommand('copy');
+                showMessageBox('Kode Tabel disalin ke clipboard!');
+            }
+            catch (err) {
+                showMessageBox('Gagal menyalin kode Tabel. Harap salin secara manual.');
+                console.error('Failed to copy table code: ', err);
+            }
+        }
+
+        // Event Listeners for Table Generator
+        numHeaderRowsInput.addEventListener('input', generateTableCode); // Listen to new input
+        tableRowsInput.addEventListener('input', generateTableCode);
+        tableColsInput.addEventListener('input', generateTableCode);
+        tableHeaderCheckbox.addEventListener('change', generateTableCode);
+        tableBorderCheckbox.addEventListener('change', generateTableCode);
+        tableStripedCheckbox.addEventListener('change', generateTableCode);
+        generateTableButton.addEventListener('click', generateTableCode); // For explicit generation
+        copyTableCodeButton.addEventListener('click', copyTableCodeToClipboard);
+        resetTableButton.addEventListener('click', () => { // Reset button listener
+            const numHeaderRows = parseInt(numHeaderRowsInput.value);
+            const numBodyRows = parseInt(tableRowsInput.value);
+            const numCols = parseInt(tableColsInput.value);
+            initializeTableData(numHeaderRows, numBodyRows, numCols);
+            generateTableCode();
+            showMessageBox('Tabel telah direset ke pengaturan awal.');
+        });
+
+
+        // Add event listeners for new color inputs
+        // Handle color circle clicks to open the native color picker
+        headerBgColorCircle.addEventListener('click', () => headerBgColorInput.click());
+        headerTextColorCircle.addEventListener('click', () => headerTextColorInput.click());
+        bodyBgColorCircle.addEventListener('click', () => bodyBgColorInput.click());
+        bodyTextColorCircle.addEventListener('click', () => bodyTextColorInput.click());
+
+        // Update circle background when color input changes
+        headerBgColorInput.addEventListener('input', (e) => {
+            headerBgColorCircle.style.backgroundColor = e.target.value;
+            generateTableCode();
+        });
+        headerTextColorInput.addEventListener('input', (e) => {
+            headerTextColorCircle.style.backgroundColor = e.target.value;
+            generateTableCode();
+        });
+        bodyBgColorInput.addEventListener('input', (e) => {
+            bodyBgColorCircle.style.backgroundColor = e.target.value;
+            generateTableCode();
+        });
+        bodyTextColorInput.addEventListener('input', (e) => {
+            bodyTextColorCircle.style.backgroundColor = e.target.value;
+            generateTableCode();
+        });
+
+
+        // --- Initial Setup ---
+        applyGridSettings(); // Apply default grid settings on load
+        generateGridCode(); // Generate initial grid code
+        initializeTableData(parseInt(numHeaderRowsInput.value), parseInt(tableRowsInput.value), parseInt(tableColsInput.value)); // Initialize data on load
+        generateTableCode(); // Generate initial table code
+        showTab('grid'); // Show grid tab by default
+    </script>
+</body>
+</html>
